@@ -1,0 +1,16 @@
+name: ragarch
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - streamlit
+  - qdrant-client
+  - pip
+  - pip:
+      - llama-index
+      - langfuse
+      - pinecone-client
+      - openai
+      - transformers
+      - sentence-transformers
