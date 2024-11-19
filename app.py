@@ -1,6 +1,7 @@
 import os, tempfile, qdrant_client
 import streamlit as st
 from llama_index.llms.openai import OpenAI
+#from langfuse.openai import OpenAI
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.core import SimpleDirectoryReader, VectorStoreIndex, StorageContext
 from llama_index.core.node_parser import SentenceSplitter, CodeSplitter, SemanticSplitterNodeParser, TokenTextSplitter
@@ -8,6 +9,21 @@ from llama_index.core.node_parser import HTMLNodeParser, JSONNodeParser, Markdow
 from llama_index.vector_stores.qdrant import QdrantVectorStore
 from llama_index.vector_stores.pinecone import PineconeVectorStore
 from pinecone import Pinecone
+from llama_index.core.callbacks import CallbackManager
+from langfuse.llama_index import LlamaIndexCallbackHandler
+from llama_index.core import Settings
+
+langfuse_callback_handler = LlamaIndexCallbackHandler(
+    public_key="pk-lf-a358e72c-1c9f-4750-84f6-eb015fd9e8cb",
+    secret_key="sk-lf-2a547e9f-da82-4120-93c8-248780d08f54",
+    host="http://localhost:3000"
+)
+
+
+Settings.callback_manager = CallbackManager([langfuse_callback_handler])
+
+from dotenv import load_dotenv
+load_dotenv()
 
 
 def reset_pipeline_generated():
@@ -50,6 +66,7 @@ def select_llm():
         llm = OpenAI(temperature=0.1, model="gpt-4-1106-preview")
         st.write(f"{llm_choice} selected")
     return llm, llm_choice
+
 
 def select_embedding_model():
     st.header("Choose Embedding Model")
@@ -173,8 +190,6 @@ def select_vector_store():
         pc = Pinecone(api_key=os.environ['PINECONE_API_KEY'])
         index = pc.Index("test")
         vector_store = PineconeVectorStore(pinecone_index=index)
-
-
     elif selected_store == "Qdrant":
         client = qdrant_client.QdrantClient(location=":memory:")
         vector_store = QdrantVectorStore(client=client, collection_name="sampledata")
@@ -272,6 +287,19 @@ def generate_code_snippet(llm_choice, embed_model_choice, node_parser_choice, re
 
     return code_snippet
 
+from diskcache import Cache
+
+cache = Cache(directory=".cache")
+
+def query_with_cache(query_engine, query):
+    if query in cache:
+        return cache[query]
+    else:
+        response = query_engine.query(query)
+        cache[query] = response
+        return response
+
+
 def main():
     st.title("RAGArch: RAG Pipeline Tester and Code Generator")
     st.markdown("""
@@ -315,10 +343,11 @@ def main():
         query = st.text_input("Enter your query", key='query')
         if st.button("Send"):
             if 'query_engine' in st.session_state:
-                response = st.session_state['query_engine'].query(query)
+                response = query_with_cache(st.session_state['query_engine'], query)
                 st.markdown(response, unsafe_allow_html=True)
             else:
                 st.error("Query engine not initialized. Please generate the RAG pipeline first.")
+
   
     if file and st.button("Generate Code Snippet"):
         code_snippet = generate_code_snippet(llm_choice, embed_model_choice, node_parser_choice, response_mode_choice, vector_store_choice)
